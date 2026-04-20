@@ -176,15 +176,27 @@ export class AnytypeClient {
     objectId: string,
     data: {
       name?: string;
+      /** Body content — only for create. For updates use `markdown`. */
       body?: string;
+      /** Markdown body — used by PATCH to update content. */
+      markdown?: string;
       icon?: any;
       properties?: any[];
+      type_key?: string;
     },
   ) {
+    // Build the PATCH payload: omit undefined fields for true partial update.
+    const payload: Record<string, any> = {};
+    if (data.name !== undefined) payload.name = data.name;
+    if (data.markdown !== undefined) payload.markdown = data.markdown;
+    else if (data.body !== undefined) payload.markdown = data.body; // convenience alias
+    if (data.icon !== undefined) payload.icon = data.icon;
+    if (data.properties !== undefined) payload.properties = data.properties;
+    if (data.type_key !== undefined) payload.type_key = data.type_key;
     return this.authed<any>(
       "PATCH",
       `/v1/spaces/${spaceId}/objects/${objectId}`,
-      data,
+      payload,
     );
   }
 

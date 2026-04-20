@@ -337,13 +337,19 @@ export default function (pi: ExtensionAPI) {
     name: "anytype_update_object",
     label: "Update Anytype Object",
     description:
-      "Update an existing Anytype object's name, body, icon, or properties.",
-    promptSnippet: "Update existing Anytype objects",
+      "Update an existing Anytype object's name, body/content, icon, type, or properties. PATCH is partial: only fields you provide are changed, the rest stay intact.",
+    promptSnippet: "Update existing Anytype objects (partial patch — only sent fields change)",
+    promptGuidelines: [
+      "PATCH is partial: only include fields you want to change. Omitting a field leaves it untouched.",
+      "To update content/body, use the 'body' parameter (maps to 'markdown' in the API).",
+      "To change the object type, use 'type_key'.",
+    ],
     parameters: Type.Object({
       space_id: Type.String({ description: "Space ID" }),
       object_id: Type.String({ description: "Object ID to update" }),
       name: Type.Optional(Type.String({ description: "New name" })),
-      body: Type.Optional(Type.String({ description: "New body (markdown)" })),
+      body: Type.Optional(Type.String({ description: "New body/content (markdown). Only this field is sent — existing content is replaced." })),
+      type_key: Type.Optional(Type.String({ description: "Change the object type (e.g. 'page', 'note', 'task')" })),
       icon_emoji: Type.Optional(Type.String({ description: "New emoji icon" })),
       properties: Type.Optional(
         Type.Array(
@@ -368,6 +374,7 @@ export default function (pi: ExtensionAPI) {
         {
           name: params.name,
           body: params.body,
+          type_key: params.type_key,
           icon,
           properties: params.properties,
         },
