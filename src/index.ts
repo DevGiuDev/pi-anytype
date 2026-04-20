@@ -22,26 +22,59 @@ const COLORS = [
 export default function (pi: ExtensionAPI) {
   const client = new AnytypeClient();
 
+  // Session-default space (set via /anytype-space)
+  let defaultSpaceId: string | null = null;
+  let defaultSpaceName: string | null = null;
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Status bar helper
+  // ---------------------------------------------------------------------------
+
+  function updateStatusBar(ctx: any, connected: boolean, totalSpaces?: number) {
+    const theme = ctx.ui.theme;
+    if (!connected) {
+      ctx.ui.setStatus("anytype", theme.fg("error", "\u25cf") + theme.fg("dim", " Anytype (off)"));
+      return;
+    }
+    const spaceLabel = defaultSpaceName
+      ? ` Anytype · ${defaultSpaceName}`
+      : ` Anytype (${totalSpaces ?? "?"} spaces)`;
+    ctx.ui.setStatus("anytype", theme.fg("success", "\u25cf") + theme.fg("dim", spaceLabel));
+  }
+
   // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
 
   pi.on("session_start", async (_event, ctx) => {
     await client.init();
-    const theme = ctx.ui.theme;
+
+    // Restore default space from session entries
+    for (const entry of ctx.sessionManager.getEntries()) {
+      if (entry.type === "custom" && entry.customType === "anytype-default-space") {
+        defaultSpaceId = entry.data?.spaceId ?? null;
+        defaultSpaceName = entry.data?.spaceName ?? null;
+      }
+    }
 
     if (!client.isAuthenticated) {
-      ctx.ui.setStatus("anytype", theme.fg("warning", "\u25cf") + theme.fg("dim", " Anytype (no auth)"));
+      ctx.ui.setStatus("anytype", ctx.ui.theme.fg("warning", "\u25cf") + ctx.ui.theme.fg("dim", " Anytype (no auth)"));
       ctx.ui.notify("Anytype: Not authenticated. Run /anytype-login or set ANYTYPE_API_KEY.", "warn");
       return;
     }
 
     try {
       const spaces = await client.listSpaces({ limit: 1 });
-      ctx.ui.setStatus("anytype", theme.fg("success", "\u25cf") + theme.fg("dim", ` Anytype (${spaces.total} spaces)`));
-      ctx.ui.notify(`Anytype: Connected — ${spaces.total} space(s) available.`, "info");
+      updateStatusBar(ctx, true, spaces.total);
+      if (!defaultSpaceId) {
+        ctx.ui.notify(`Anytype: Connected — ${spaces.total} space(s). Use /anytype-space to set default.`, "info");
+      }
     } catch {
-      ctx.ui.setStatus("anytype", theme.fg("error", "\u25cf") + theme.fg("dim", " Anytype (off)"));
+      updateStatusBar(ctx, false);
       ctx.ui.notify("Anytype: Cannot reach API. Is Anytype desktop running?", "error");
     }
   });
@@ -76,11 +109,59 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ---------------------------------------------------------------------------
+  // Command: /anytype-space
+  // ---------------------------------------------------------------------------
+
+  pi.registerCommand("anytype-space", {
+    description: "Choose default Anytype space for this session",
+    handler: async (_args, ctx) => {
+      if (!client.isAuthenticated) {
+        ctx.ui.notify("Not authenticated. Run /anytype-login first.", "warn");
+        return;
+      }
+      try {
+        const result = await client.listSpaces({ limit: 100 });
+        if (!result.results.length) {
+          ctx.ui.notify("No spaces found.", "warn");
+          return;
+        }
+
+        const items = result.results.map((s: any) => ({
+          label: `${s.icon?.emoji ?? "📁"} ${s.name}${defaultSpaceId === s.id ? " ← active" : ""}`,
+          value: s.id,
+        }));
+        items.push({ label: "⊘ Clear default (search all spaces)", value: "__none__" });
+
+        const chosen = await ctx.ui.select("Choose default space:", items);
+        if (!chosen) return;
+
+        if (chosen === "__none__") {
+          defaultSpaceId = null;
+          defaultSpaceName = null;
+          pi.appendEntry("anytype-default-space", { spaceId: null, spaceName: null });
+          updateStatusBar(ctx, true, result.total);
+          ctx.ui.notify("Default space cleared. Will search all spaces.", "info");
+          return;
+        }
+
+        const space = result.results.find((s: any) => s.id === chosen);
+        defaultSpaceId = chosen;
+        defaultSpaceName = space?.name ?? null;
+        pi.appendEntry("anytype-default-space", { spaceId: chosen, spaceName: defaultSpaceName });
+        updateStatusBar(ctx, true, result.total);
+        ctx.ui.notify(`Default space: ${space?.icon?.emoji ?? "📁"} ${defaultSpaceName}`, "success");
+      } catch (err: any) {
+        ctx.ui.notify(`Failed to list spaces: ${err.message}`, "error");
+      }
+    },
+  });
+
+  // ---------------------------------------------------------------------------
   // Command: /anytype-status
   // ---------------------------------------------------------------------------
 
   pi.registerCommand("anytype-status", {
-    description: "Check Anytype connection status",
+    description: "Check Anytype connection status and default space",
     handler: async (_args, ctx) => {
       if (!client.isAuthenticated) {
         ctx.ui.notify(
@@ -91,10 +172,10 @@ export default function (pi: ExtensionAPI) {
       }
       try {
         const spaces = await client.listSpaces({ limit: 1 });
-        ctx.ui.notify(
-          `Connected! Found ${spaces.total} space(s).`,
-          "success",
-        );
+        const spaceLabel = defaultSpaceName
+          ? `Connected! ${spaces.total} space(s). Default: ${defaultSpaceName} (${defaultSpaceId})`
+          : `Connected! ${spaces.total} space(s). No default set — use /anytype-space.`;
+        ctx.ui.notify(spaceLabel, "success");
       } catch (err: any) {
         ctx.ui.notify(`Connection failed: ${err.message}`, "error");
       }
@@ -140,9 +221,10 @@ export default function (pi: ExtensionAPI) {
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       ensureAuth();
       const limit = Math.min(params.limit ?? 20, 100);
+      const spaceId = params.space_id ?? defaultSpaceId;
       let result: any;
-      if (params.space_id) {
-        result = await client.searchSpace(params.space_id, params.query, {
+      if (spaceId) {
+        result = await client.searchSpace(spaceId, params.query, {
           types: params.types,
           filters: params.filters,
           sort: params.sort,
@@ -1145,12 +1227,13 @@ export default function (pi: ExtensionAPI) {
     promptGuidelines: [
       "Use this when the user just wants to jot something down quickly in Anytype.",
       "Automatically resolves the space and uses the 'note' or 'page' type.",
+      "If a default space is set, uses it automatically unless space_id is provided.",
     ],
     parameters: Type.Object({
       name: Type.String({ description: "Note title" }),
       body: Type.String({ description: "Note content (markdown)" }),
       space_id: Type.Optional(
-        Type.String({ description: "Space ID (auto-detects first space if omitted)" }),
+        Type.String({ description: "Space ID (uses session default if omitted)" }),
       ),
       icon_emoji: Type.Optional(
         Type.String({ description: "Emoji icon (default: '📝')" }),
@@ -1159,8 +1242,8 @@ export default function (pi: ExtensionAPI) {
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       ensureAuth();
 
-      // Resolve space
-      let spaceId = params.space_id;
+      // Resolve space: explicit > default > first available
+      let spaceId = params.space_id ?? defaultSpaceId;
       if (!spaceId) {
         const spaces = await client.listSpaces({ limit: 1 });
         if (!spaces.results.length) {
