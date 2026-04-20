@@ -337,11 +337,11 @@ export default function (pi: ExtensionAPI) {
     name: "anytype_update_object",
     label: "Update Anytype Object",
     description:
-      "Update an existing Anytype object's name, body/content, icon, type, or properties. PATCH is partial: only fields you provide are changed, the rest stay intact.",
+      "Update an existing Anytype object's name, body/content, icon, type, or properties. PATCH is partial at field level: only sent fields change, the rest stay intact. However, the 'body' field itself is always a FULL replacement — there is no line-level or block-level partial edit. To modify content, you must GET the full markdown first, modify it, then PATCH it back.",
     promptSnippet: "Update existing Anytype objects (partial patch — only sent fields change)",
     promptGuidelines: [
-      "PATCH is partial: only include fields you want to change. Omitting a field leaves it untouched.",
-      "To update content/body, use the 'body' parameter (maps to 'markdown' in the API).",
+      "PATCH is partial at field level: only include fields you want to change. Omitting a field leaves it untouched.",
+      "To update content/body, use the 'body' parameter (maps to 'markdown' in the API). IMPORTANT: the body field is always a FULL replacement — there is no partial/diff edit. You must GET the full object first, modify the markdown, then PATCH it back.",
       "To change the object type, use 'type_key'.",
     ],
     parameters: Type.Object({

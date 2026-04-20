@@ -71,3 +71,12 @@ export ANYTYPE_API_BASE_URL="http://127.0.0.1:31012"
 
 - La API key también se guarda en: `~/.config/anytype-pi/config.json`
 - Versión de API usada por defecto: `2025-11-08`
+
+## Edición de contenido
+
+El PATCH es parcial a nivel de campo (solo mandas lo que cambias), pero el **body/markdown es siempre reemplazo completo**. No hay diff ni edición por línea.
+
+Para modificar el contenido de una nota:
+1. `GET` el objeto completo → obtener markdown actual
+2. Modificar en memoria (añadir, quitar, reemplazar líneas)
+3. `PATCH` con `{body: "contenido modificado completo"}`

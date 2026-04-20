@@ -53,7 +53,19 @@ La API responde con shape `{ data, pagination }` para listados y `{ data: {...} 
 - `anytype_quick_note` es la tool de conveniencia: resuelve espacio y tipo automáticamente.
 - `anytype_search` soporta tanto búsqueda global como por espacio (parámetro `space_id`).
 
-### Headers requeridos
+### PATCH es parcial a nivel de campo, NO a nivel de contenido
+
+El endpoint `PATCH /v1/spaces/{space_id}/objects/{object_id}` es un merge parcial:
+- Enviar solo `{name}` → cambia nombre, todo lo demás intacto
+- Enviar solo `{properties}` → cambia propiedades, nombre y body intactos
+
+**Pero el campo `markdown` (body) es SIEMPRE un reemplazo completo.** No existe diff, append ni edición por línea/bloque. Para modificar el contenido de una nota:
+
+1. `GET` el objeto completo para obtener el markdown actual
+2. Modificar en memoria lo que se necesite (añadir, quitar, reemplazar líneas)
+3. `PATCH` con `{markdown: "contenido modificado completo"}`
+
+Esto es importante para que el LLM no asuma que puede mandar solo un fragmento del markdown.
 
 Todas las peticiones a la API llevan:
 - `Authorization: Bearer <api_key>`
