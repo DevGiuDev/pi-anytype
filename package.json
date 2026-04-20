@@ -1,0 +1,7 @@
+{
+  "name": "pi-anytype",
+  "version": "0.1.0",
+  "description": "Pi extension for interacting with Anytype via its REST API",
+  "private": true,
+  "dependencies": {}
+}
