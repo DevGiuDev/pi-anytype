@@ -203,6 +203,8 @@ export default function (pi: ExtensionAPI) {
       "Use anytype_search when the user wants to find notes, tasks, pages, or other objects in Anytype.",
       "Uses the session default space automatically. Only pass space_id when the user explicitly wants a different space.",
       "Common type keys: page, note, task, project, bookmark, collection, set.",
+      "DO NOT use wildcards like '*' or '%' as query — this is full-text search, not glob. Use meaningful words.",
+      "To LIST ALL objects in a space, use anytype_list_objects instead of anytype_search.",
     ],
     parameters: Type.Object({
       query: Type.String({ description: "Search text (matches name and snippet)" }),
