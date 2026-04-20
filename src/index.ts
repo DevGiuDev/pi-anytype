@@ -111,6 +111,12 @@ export default function (pi: ExtensionAPI) {
           description: "Filter by object type keys (e.g. ['page', 'task'])",
         }),
       ),
+      filters: Type.Optional(
+        Type.Any({ description: "Advanced FilterExpression (API native). Example: {operator:'and', conditions:[{property_key:'proyecto', condition:'eq', objects:['<id>']}]}" }),
+      ),
+      sort: Type.Optional(
+        Type.Any({ description: "Advanced sort options (API native)." }),
+      ),
       limit: Type.Optional(
         Type.Number({ description: "Max results (default 20, max 100)", default: 20 }),
       ),
@@ -122,11 +128,15 @@ export default function (pi: ExtensionAPI) {
       if (params.space_id) {
         result = await client.searchSpace(params.space_id, params.query, {
           types: params.types,
+          filters: params.filters,
+          sort: params.sort,
           limit,
         });
       } else {
         result = await client.searchGlobal(params.query, {
           types: params.types,
+          filters: params.filters,
+          sort: params.sort,
           limit,
         });
       }
@@ -225,6 +235,33 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ---------------------------------------------------------------------------
+  // Tool: anytype_update_space
+  // ---------------------------------------------------------------------------
+
+  pi.registerTool({
+    name: "anytype_update_space",
+    label: "Update Anytype Space",
+    description: "Update an existing Anytype space (name and/or description).",
+    promptSnippet: "Update Anytype space metadata",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      name: Type.Optional(Type.String({ description: "New space name" })),
+      description: Type.Optional(Type.String({ description: "New space description" })),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      const space = await client.updateSpace(params.space_id, {
+        name: params.name,
+        description: params.description,
+      });
+      return {
+        content: [{ type: "text", text: `Updated space: ${fmtSpace(space)}` }],
+        details: space,
+      };
+    },
+  });
+
+  // ---------------------------------------------------------------------------
   // Tool: anytype_get_object
   // ---------------------------------------------------------------------------
 
@@ -247,7 +284,7 @@ export default function (pi: ExtensionAPI) {
       const lines = [
         fmtObject(obj),
         "",
-        obj.body ? truncate(obj.body, 4000) : "(no body content)",
+        (obj.markdown ?? obj.body) ? truncate(obj.markdown ?? obj.body, 4000) : "(no body content)",
       ];
       if (obj.properties?.length) {
         lines.push("", "**Properties:**");
@@ -450,6 +487,110 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ---------------------------------------------------------------------------
+  // Tool: anytype_get_type
+  // ---------------------------------------------------------------------------
+
+  pi.registerTool({
+    name: "anytype_get_type",
+    label: "Get Anytype Type",
+    description: "Get details of a specific type in a space.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      type_id: Type.String({ description: "Type ID" }),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      const t = await client.getType(params.space_id, params.type_id);
+      return {
+        content: [{ type: "text", text: fmtType(t) }],
+        details: t,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "anytype_create_type",
+    label: "Create Anytype Type",
+    description: "Create a custom object type in a space.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      name: Type.String({ description: "Type singular name" }),
+      plural_name: Type.String({ description: "Type plural name" }),
+      layout: Type.String({ description: "Type layout (e.g. basic, note, bookmark, set, collection)" }),
+      key: Type.Optional(Type.String({ description: "Optional custom type key" })),
+      icon_emoji: Type.Optional(Type.String({ description: "Optional emoji icon" })),
+      properties: Type.Optional(Type.Array(Type.Object({
+        key: Type.String({ description: "Property key" }),
+      }))),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      const t = await client.createType(params.space_id, {
+        name: params.name,
+        plural_name: params.plural_name,
+        layout: params.layout,
+        key: params.key,
+        icon: params.icon_emoji ? { emoji: params.icon_emoji } : undefined,
+        properties: params.properties,
+      });
+      return {
+        content: [{ type: "text", text: `Created type: ${fmtType(t)}` }],
+        details: t,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "anytype_update_type",
+    label: "Update Anytype Type",
+    description: "Update an existing custom type in a space.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      type_id: Type.String({ description: "Type ID" }),
+      name: Type.Optional(Type.String({ description: "New singular name" })),
+      plural_name: Type.Optional(Type.String({ description: "New plural name" })),
+      key: Type.Optional(Type.String({ description: "New key" })),
+      layout: Type.Optional(Type.String({ description: "New layout" })),
+      icon_emoji: Type.Optional(Type.String({ description: "New emoji icon" })),
+      properties: Type.Optional(Type.Array(Type.Object({
+        key: Type.String({ description: "Property key" }),
+      }))),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      const t = await client.updateType(params.space_id, params.type_id, {
+        name: params.name,
+        plural_name: params.plural_name,
+        key: params.key,
+        layout: params.layout,
+        icon: params.icon_emoji ? { emoji: params.icon_emoji } : undefined,
+        properties: params.properties,
+      });
+      return {
+        content: [{ type: "text", text: `Updated type: ${fmtType(t)}` }],
+        details: t,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "anytype_delete_type",
+    label: "Delete Anytype Type",
+    description: "Archive/delete a custom type from a space.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      type_id: Type.String({ description: "Type ID" }),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      await client.deleteType(params.space_id, params.type_id);
+      return {
+        content: [{ type: "text", text: `Deleted type \`${params.type_id}\`.` }],
+      };
+    },
+  });
+
+  // ---------------------------------------------------------------------------
   // Tool: anytype_list_objects
   // ---------------------------------------------------------------------------
 
@@ -487,6 +628,103 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ---------------------------------------------------------------------------
+  // Tool: anytype_list_views
+  // ---------------------------------------------------------------------------
+
+  pi.registerTool({
+    name: "anytype_list_views",
+    label: "List Anytype List Views",
+    description: "List views configured for a collection/query (list).",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      list_id: Type.String({ description: "Collection/Set (list) object ID" }),
+      limit: Type.Optional(Type.Number({ description: "Max results (default 20)", default: 20 })),
+      offset: Type.Optional(Type.Number({ description: "Skip this many results", default: 0 })),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      const result = await client.getListViews(params.space_id, params.list_id, {
+        limit: params.limit ?? 20,
+        offset: params.offset,
+      });
+      const lines = [
+        `${result.total} view(s):`,
+        "",
+        ...result.results.map((v: any) => `🧩 **${v.name ?? "Untitled"}** (id: \`${v.id}\`, layout: ${v.layout ?? "?"})`),
+      ];
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        details: { views: result.results.map((v: any) => ({ id: v.id, name: v.name, layout: v.layout })) },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "anytype_list_list_objects",
+    label: "List Objects in Collection/Set",
+    description: "List objects contained in a specific collection/query view.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      list_id: Type.String({ description: "Collection/Set (list) ID" }),
+      view_id: Type.String({ description: "View ID" }),
+      limit: Type.Optional(Type.Number({ description: "Max results (default 20)", default: 20 })),
+      offset: Type.Optional(Type.Number({ description: "Skip this many results", default: 0 })),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      const result = await client.getListObjects(params.space_id, params.list_id, params.view_id, {
+        limit: params.limit ?? 20,
+        offset: params.offset,
+      });
+      const lines = [
+        `${result.total} object(s) in list/view${result.has_more ? " (more available)" : ""}:`,
+        "",
+        ...result.results.map((o: any) => fmtObject(o)),
+      ];
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        details: { total: result.total, ids: result.results.map((o: any) => o.id) },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "anytype_add_list_objects",
+    label: "Add Objects to Collection/Set",
+    description: "Add one or more objects to a collection/query list.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      list_id: Type.String({ description: "List ID" }),
+      object_ids: Type.Array(Type.String(), { description: "Object IDs to add" }),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      await client.addListObjects(params.space_id, params.list_id, params.object_ids);
+      return {
+        content: [{ type: "text", text: `Added ${params.object_ids.length} object(s) to list \`${params.list_id}\`.` }],
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "anytype_remove_list_object",
+    label: "Remove Object from Collection/Set",
+    description: "Remove an object from a collection/query list.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      list_id: Type.String({ description: "List ID" }),
+      object_id: Type.String({ description: "Object ID to remove" }),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      await client.removeListObject(params.space_id, params.list_id, params.object_id);
+      return {
+        content: [{ type: "text", text: `Removed object \`${params.object_id}\` from list \`${params.list_id}\`.` }],
+      };
+    },
+  });
+
+  // ---------------------------------------------------------------------------
   // Tool: anytype_list_properties
   // ---------------------------------------------------------------------------
 
@@ -510,6 +748,98 @@ export default function (pi: ExtensionAPI) {
       return {
         content: [{ type: "text", text: lines.join("\n") }],
         details: { properties: result.results.map((p: any) => ({ key: p.key, name: p.name, format: p.format, id: p.id })) },
+      };
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // Tool: anytype_get_property / anytype_create_property / anytype_update_property / anytype_delete_property
+  // ---------------------------------------------------------------------------
+
+  pi.registerTool({
+    name: "anytype_get_property",
+    label: "Get Anytype Property",
+    description: "Get details of a property in a space.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      property_id: Type.String({ description: "Property ID" }),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      const p = await client.getProperty(params.space_id, params.property_id);
+      return {
+        content: [{ type: "text", text: fmtProperty(p) }],
+        details: p,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "anytype_create_property",
+    label: "Create Anytype Property",
+    description: "Create a new property in a space.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      name: Type.String({ description: "Property name" }),
+      format: Type.String({ description: "Property format (text, number, date, checkbox, select, multi_select, objects, etc.)" }),
+      key: Type.Optional(Type.String({ description: "Optional custom key" })),
+      tags: Type.Optional(Type.Array(Type.Object({
+        name: Type.String({ description: "Tag name" }),
+        color: StringEnum(COLORS, { description: "Tag color" }),
+        key: Type.Optional(Type.String({ description: "Optional custom key" })),
+      }))),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      const p = await client.createProperty(params.space_id, {
+        name: params.name,
+        format: params.format,
+        key: params.key,
+        tags: params.tags,
+      });
+      return {
+        content: [{ type: "text", text: `Created property: ${fmtProperty(p)}` }],
+        details: p,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "anytype_update_property",
+    label: "Update Anytype Property",
+    description: "Update a property's metadata (name/key).",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      property_id: Type.String({ description: "Property ID" }),
+      name: Type.Optional(Type.String({ description: "New name" })),
+      key: Type.Optional(Type.String({ description: "New key" })),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      const p = await client.updateProperty(params.space_id, params.property_id, {
+        name: params.name,
+        key: params.key,
+      });
+      return {
+        content: [{ type: "text", text: `Updated property: ${fmtProperty(p)}` }],
+        details: p,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "anytype_delete_property",
+    label: "Delete Anytype Property",
+    description: "Delete/archive a property from a space.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      property_id: Type.String({ description: "Property ID" }),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      await client.deleteProperty(params.space_id, params.property_id);
+      return {
+        content: [{ type: "text", text: `Deleted property \`${params.property_id}\`.` }],
       };
     },
   });
@@ -578,6 +908,73 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ---------------------------------------------------------------------------
+  // Tool: anytype_get_tag / anytype_update_tag / anytype_delete_tag
+  // ---------------------------------------------------------------------------
+
+  pi.registerTool({
+    name: "anytype_get_tag",
+    label: "Get Anytype Tag",
+    description: "Get details of a tag from a select/multi_select property.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      property_id: Type.String({ description: "Property ID" }),
+      tag_id: Type.String({ description: "Tag ID" }),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      const tag = await client.getTag(params.space_id, params.property_id, params.tag_id);
+      return {
+        content: [{ type: "text", text: fmtTag(tag) }],
+        details: tag,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "anytype_update_tag",
+    label: "Update Anytype Tag",
+    description: "Update a tag option for a select/multi_select property.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      property_id: Type.String({ description: "Property ID" }),
+      tag_id: Type.String({ description: "Tag ID" }),
+      name: Type.Optional(Type.String({ description: "New tag name" })),
+      color: Type.Optional(StringEnum(COLORS, { description: "New tag color" })),
+      key: Type.Optional(Type.String({ description: "Optional custom key" })),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      const tag = await client.updateTag(params.space_id, params.property_id, params.tag_id, {
+        name: params.name,
+        color: params.color,
+        key: params.key,
+      });
+      return {
+        content: [{ type: "text", text: `Updated tag: ${fmtTag(tag)}` }],
+        details: tag,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "anytype_delete_tag",
+    label: "Delete Anytype Tag",
+    description: "Delete/archive a tag option from a property.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      property_id: Type.String({ description: "Property ID" }),
+      tag_id: Type.String({ description: "Tag ID" }),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      await client.deleteTag(params.space_id, params.property_id, params.tag_id);
+      return {
+        content: [{ type: "text", text: `Deleted tag \`${params.tag_id}\` from property \`${params.property_id}\`.` }],
+      };
+    },
+  });
+
+  // ---------------------------------------------------------------------------
   // Tool: anytype_list_members
   // ---------------------------------------------------------------------------
 
@@ -603,6 +1000,30 @@ export default function (pi: ExtensionAPI) {
       return {
         content: [{ type: "text", text: lines.join("\n") }],
         details: { members: result.results.map((m: any) => ({ id: m.id, name: m.name, role: m.role })) },
+      };
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // Tool: anytype_get_member
+  // ---------------------------------------------------------------------------
+
+  pi.registerTool({
+    name: "anytype_get_member",
+    label: "Get Anytype Member",
+    description: "Get details of a specific member in a space.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      member_id: Type.String({ description: "Member ID" }),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      const m = await client.getMember(params.space_id, params.member_id);
+      const icon = m.icon?.emoji ?? "👤";
+      const text = `${icon} **${m.name ?? m.global_name ?? "Unknown"}** (id: \`${m.id}\`, role: ${m.role ?? "?"}, status: ${m.status ?? "?"})`;
+      return {
+        content: [{ type: "text", text }],
+        details: m,
       };
     },
   });
@@ -635,6 +1056,34 @@ export default function (pi: ExtensionAPI) {
       return {
         content: [{ type: "text", text: lines.join("\n") }],
         details: { templates: result.results.map((t: any) => ({ id: t.id, name: t.name })) },
+      };
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // Tool: anytype_get_template
+  // ---------------------------------------------------------------------------
+
+  pi.registerTool({
+    name: "anytype_get_template",
+    label: "Get Anytype Template",
+    description: "Get a specific template by ID for a given type.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "Space ID" }),
+      type_id: Type.String({ description: "Type ID" }),
+      template_id: Type.String({ description: "Template ID" }),
+    }),
+    async execute(_id, params) {
+      ensureAuth();
+      const t = await client.getTemplate(params.space_id, params.type_id, params.template_id);
+      const lines = [
+        `📋 **${t.name ?? "Untitled"}** (id: \`${t.id}\`)`,
+        "",
+        (t.markdown ?? t.body) ? truncate(t.markdown ?? t.body, 4000) : "(no body content)",
+      ];
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        details: t,
       };
     },
   });

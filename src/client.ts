@@ -63,7 +63,13 @@ export class AnytypeClient {
   /** Global search across all spaces */
   async searchGlobal(
     query: string,
-    opts?: { types?: string[]; limit?: number; offset?: number },
+    opts?: {
+      types?: string[];
+      filters?: any;
+      sort?: any;
+      limit?: number;
+      offset?: number;
+    },
   ) {
     const params = new URLSearchParams();
     if (opts?.limit) params.set("limit", String(opts.limit));
@@ -76,6 +82,8 @@ export class AnytypeClient {
     }>("POST", `/v1/search?${params}`, {
       query,
       types: opts?.types,
+      filters: opts?.filters,
+      sort: opts?.sort,
     });
   }
 
@@ -83,7 +91,13 @@ export class AnytypeClient {
   async searchSpace(
     spaceId: string,
     query: string,
-    opts?: { types?: string[]; limit?: number; offset?: number },
+    opts?: {
+      types?: string[];
+      filters?: any;
+      sort?: any;
+      limit?: number;
+      offset?: number;
+    },
   ) {
     const params = new URLSearchParams();
     if (opts?.limit) params.set("limit", String(opts.limit));
@@ -96,6 +110,8 @@ export class AnytypeClient {
     }>("POST", `/v1/spaces/${spaceId}/search?${params}`, {
       query,
       types: opts?.types,
+      filters: opts?.filters,
+      sort: opts?.sort,
     });
   }
 
@@ -216,7 +232,7 @@ export class AnytypeClient {
     listId: string,
     objectIds: string[],
   ) {
-    return this.authed<string>(
+    return this.authed<any>(
       "POST",
       `/v1/spaces/${spaceId}/lists/${listId}/objects`,
       { objects: objectIds },
@@ -228,10 +244,25 @@ export class AnytypeClient {
     listId: string,
     objectId: string,
   ) {
-    return this.authed<string>(
+    return this.authed<any>(
       "DELETE",
       `/v1/spaces/${spaceId}/lists/${listId}/objects/${objectId}`,
     );
+  }
+
+  async getListViews(
+    spaceId: string,
+    listId: string,
+    opts?: { limit?: number; offset?: number },
+  ) {
+    const params = new URLSearchParams();
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    if (opts?.offset) params.set("offset", String(opts.offset));
+    return this.authed<{
+      results: any[];
+      total: number;
+      has_more: boolean;
+    }>("GET", `/v1/spaces/${spaceId}/lists/${listId}/views?${params}`);
   }
 
   async getListObjects(
@@ -271,6 +302,39 @@ export class AnytypeClient {
     return this.authed<any>("GET", `/v1/spaces/${spaceId}/types/${typeId}`);
   }
 
+  async createType(
+    spaceId: string,
+    data: {
+      name: string;
+      plural_name: string;
+      layout: string;
+      key?: string;
+      icon?: any;
+      properties?: any[];
+    },
+  ) {
+    return this.authed<any>("POST", `/v1/spaces/${spaceId}/types`, data);
+  }
+
+  async updateType(
+    spaceId: string,
+    typeId: string,
+    data: {
+      name?: string;
+      plural_name?: string;
+      key?: string;
+      layout?: string;
+      icon?: any;
+      properties?: any[];
+    },
+  ) {
+    return this.authed<any>("PATCH", `/v1/spaces/${spaceId}/types/${typeId}`, data);
+  }
+
+  async deleteType(spaceId: string, typeId: string) {
+    return this.authed<any>("DELETE", `/v1/spaces/${spaceId}/types/${typeId}`);
+  }
+
   // ---------------------------------------------------------------------------
   // Properties
   // ---------------------------------------------------------------------------
@@ -286,6 +350,34 @@ export class AnytypeClient {
       "GET",
       `/v1/spaces/${spaceId}/properties?${params}`,
     );
+  }
+
+  async getProperty(spaceId: string, propertyId: string) {
+    return this.authed<any>("GET", `/v1/spaces/${spaceId}/properties/${propertyId}`);
+  }
+
+  async createProperty(
+    spaceId: string,
+    data: {
+      name: string;
+      format: string;
+      key?: string;
+      tags?: any[];
+    },
+  ) {
+    return this.authed<any>("POST", `/v1/spaces/${spaceId}/properties`, data);
+  }
+
+  async updateProperty(
+    spaceId: string,
+    propertyId: string,
+    data: { name?: string; key?: string },
+  ) {
+    return this.authed<any>("PATCH", `/v1/spaces/${spaceId}/properties/${propertyId}`, data);
+  }
+
+  async deleteProperty(spaceId: string, propertyId: string) {
+    return this.authed<any>("DELETE", `/v1/spaces/${spaceId}/properties/${propertyId}`);
   }
 
   // ---------------------------------------------------------------------------
@@ -305,6 +397,13 @@ export class AnytypeClient {
     );
   }
 
+  async getTag(spaceId: string, propertyId: string, tagId: string) {
+    return this.authed<any>(
+      "GET",
+      `/v1/spaces/${spaceId}/properties/${propertyId}/tags/${tagId}`,
+    );
+  }
+
   async createTag(
     spaceId: string,
     propertyId: string,
@@ -314,6 +413,26 @@ export class AnytypeClient {
       "POST",
       `/v1/spaces/${spaceId}/properties/${propertyId}/tags`,
       data,
+    );
+  }
+
+  async updateTag(
+    spaceId: string,
+    propertyId: string,
+    tagId: string,
+    data: { name?: string; color?: string; key?: string },
+  ) {
+    return this.authed<any>(
+      "PATCH",
+      `/v1/spaces/${spaceId}/properties/${propertyId}/tags/${tagId}`,
+      data,
+    );
+  }
+
+  async deleteTag(spaceId: string, propertyId: string, tagId: string) {
+    return this.authed<any>(
+      "DELETE",
+      `/v1/spaces/${spaceId}/properties/${propertyId}/tags/${tagId}`,
     );
   }
 
@@ -327,6 +446,10 @@ export class AnytypeClient {
       total: number;
       has_more: boolean;
     }>("GET", `/v1/spaces/${spaceId}/members`);
+  }
+
+  async getMember(spaceId: string, memberId: string) {
+    return this.authed<any>("GET", `/v1/spaces/${spaceId}/members/${memberId}`);
   }
 
   // ---------------------------------------------------------------------------
@@ -344,6 +467,13 @@ export class AnytypeClient {
     );
   }
 
+  async getTemplate(spaceId: string, typeId: string, templateId: string) {
+    return this.authed<any>(
+      "GET",
+      `/v1/spaces/${spaceId}/types/${typeId}/templates/${templateId}`,
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Internal request helpers
   // ---------------------------------------------------------------------------
@@ -355,10 +485,19 @@ export class AnytypeClient {
       );
     }
     const res = await this.raw(method, path, body);
-    const json = await res.json();
 
-    // Anytype wraps most responses as { data, pagination }
-    // Normalize to shapes expected by the extension tools.
+    if (res.status === 204) {
+      return {} as T;
+    }
+
+    const text = await res.text();
+    if (!text || !text.trim()) {
+      return {} as T;
+    }
+
+    const json = JSON.parse(text);
+
+    // Anytype wraps most list responses as { data, pagination }
     if (json && Array.isArray(json.data) && json.pagination) {
       return {
         results: json.data,
@@ -367,12 +506,13 @@ export class AnytypeClient {
       } as T;
     }
 
-    // Single resource responses are usually { data: {...} }
-    if (json && Object.prototype.hasOwnProperty.call(json, "data")) {
-      return json.data as T;
+    // Single-resource wrappers in current API
+    for (const key of ["data", "object", "space", "type", "property", "tag", "member", "template"]) {
+      if (json && Object.prototype.hasOwnProperty.call(json, key)) {
+        return json[key] as T;
+      }
     }
 
-    // Fallback: raw JSON as-is
     return json as T;
   }
 

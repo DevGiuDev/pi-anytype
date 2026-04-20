@@ -86,24 +86,57 @@ Todas las peticiones a la API llevan:
 
 ## Tools registradas
 
-| Tool | Descripción |
-|------|-------------|
-| `anytype_search` | Búsqueda global o por espacio |
-| `anytype_list_spaces` | Listar espacios |
-| `anytype_create_space` | Crear espacio |
-| `anytype_get_space` | Detalles de un espacio |
-| `anytype_list_objects` | Listar objetos en un espacio |
-| `anytype_get_object` | Contenido completo de un objeto |
-| `anytype_create_object` | Crear objeto |
-| `anytype_update_object` | Actualizar objeto |
-| `anytype_delete_object` | Archivar objeto |
-| `anytype_list_types` | Tipos disponibles en un espacio |
-| `anytype_list_properties` | Propiedades de un espacio |
-| `anytype_list_tags` | Tags de una propiedad |
-| `anytype_create_tag` | Crear tag |
-| `anytype_list_members` | Miembros de un espacio |
-| `anytype_list_templates` | Templates de un tipo |
-| `anytype_quick_note` | Nota rápida (auto-resuelve espacio y tipo) |
+### Search
+- `anytype_search`
+
+### Spaces
+- `anytype_list_spaces`
+- `anytype_create_space`
+- `anytype_get_space`
+- `anytype_update_space`
+
+### Objects
+- `anytype_list_objects`
+- `anytype_get_object`
+- `anytype_create_object`
+- `anytype_update_object`
+- `anytype_delete_object`
+- `anytype_quick_note`
+
+### Lists (collections/sets)
+- `anytype_list_views`
+- `anytype_list_list_objects`
+- `anytype_add_list_objects`
+- `anytype_remove_list_object`
+
+### Types
+- `anytype_list_types`
+- `anytype_get_type`
+- `anytype_create_type`
+- `anytype_update_type`
+- `anytype_delete_type`
+
+### Properties
+- `anytype_list_properties`
+- `anytype_get_property`
+- `anytype_create_property`
+- `anytype_update_property`
+- `anytype_delete_property`
+
+### Tags
+- `anytype_list_tags`
+- `anytype_get_tag`
+- `anytype_create_tag`
+- `anytype_update_tag`
+- `anytype_delete_tag`
+
+### Members
+- `anytype_list_members`
+- `anytype_get_member`
+
+### Templates
+- `anytype_list_templates`
+- `anytype_get_template`
 
 ## Git
 
