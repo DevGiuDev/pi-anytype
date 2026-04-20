@@ -126,16 +126,21 @@ export default function (pi: ExtensionAPI) {
           return;
         }
 
-        const items = result.results.map((s: any) => ({
-          label: `${s.icon?.emoji ?? "📁"} ${s.name}${defaultSpaceId === s.id ? " ← active" : ""}`,
-          value: s.id,
-        }));
-        items.push({ label: "⊘ Clear default (search all spaces)", value: "__none__" });
+        // Build display labels and a lookup map
+        const labels: string[] = [];
+        const idByName = new Map<string, string>();
+        for (const s of result.results) {
+          const label = `${s.icon?.emoji ?? "📁"} ${s.name}${defaultSpaceId === s.id ? " ← active" : ""}`;
+          labels.push(label);
+          idByName.set(label, s.id);
+        }
+        const clearLabel = "⊘ Clear default (search all spaces)";
+        labels.push(clearLabel);
 
-        const chosen = await ctx.ui.select("Choose default space:", items);
+        const chosen = await ctx.ui.select("Choose default space:", labels);
         if (!chosen) return;
 
-        if (chosen === "__none__") {
+        if (chosen === clearLabel) {
           defaultSpaceId = null;
           defaultSpaceName = null;
           pi.appendEntry("anytype-default-space", { spaceId: null, spaceName: null });
@@ -144,10 +149,11 @@ export default function (pi: ExtensionAPI) {
           return;
         }
 
-        const space = result.results.find((s: any) => s.id === chosen);
-        defaultSpaceId = chosen;
+        const chosenId = idByName.get(chosen)!;
+        const space = result.results.find((s: any) => s.id === chosenId);
+        defaultSpaceId = chosenId;
         defaultSpaceName = space?.name ?? null;
-        pi.appendEntry("anytype-default-space", { spaceId: chosen, spaceName: defaultSpaceName });
+        pi.appendEntry("anytype-default-space", { spaceId: chosenId, spaceName: defaultSpaceName });
         updateStatusBar(ctx, true, result.total);
         ctx.ui.notify(`Default space: ${space?.icon?.emoji ?? "📁"} ${defaultSpaceName}`, "success");
       } catch (err: any) {
