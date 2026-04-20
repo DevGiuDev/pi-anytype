@@ -281,21 +281,48 @@ export default function (pi: ExtensionAPI) {
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       ensureAuth();
       const obj = await client.getObject(params.space_id, params.object_id);
+
+      let typeDef: any = null;
+      if (obj.type?.id) {
+        try {
+          typeDef = await client.getType(params.space_id, obj.type.id);
+        } catch {
+          typeDef = null;
+        }
+      }
+
       const lines = [
         fmtObject(obj),
         "",
         (obj.markdown ?? obj.body) ? truncate(obj.markdown ?? obj.body, 4000) : "(no body content)",
       ];
-      if (obj.properties?.length) {
-        lines.push("", "**Properties:**");
-        for (const p of obj.properties) {
-          const val = p.text ?? p.number ?? p.checkbox ?? p.date ?? p.object?.name ?? p.tags?.map((t: any) => t.name).join(", ") ?? "";
-          if (val !== "") lines.push(`- ${p.name}: ${val}`);
+
+      const objectProps = Array.isArray(obj.properties) ? obj.properties : [];
+      const byKey = new Map<string, any>();
+      for (const p of objectProps) {
+        if (p?.key) byKey.set(p.key, p);
+      }
+
+      lines.push("", "**Properties:**");
+      const shownKeys = new Set<string>();
+
+      if (Array.isArray(typeDef?.properties) && typeDef.properties.length > 0) {
+        for (const tp of typeDef.properties) {
+          const p = byKey.get(tp.key);
+          const value = p ? formatPropertyValue(p) : defaultValueForFormat(tp.format);
+          lines.push(`- ${tp.name} (\`${tp.key}\`): ${value}`);
+          shownKeys.add(tp.key);
         }
       }
+
+      for (const p of objectProps) {
+        if (!p?.key || shownKeys.has(p.key)) continue;
+        lines.push(`- ${p.name ?? p.key} (\`${p.key}\`): ${formatPropertyValue(p)}`);
+      }
+
       return {
         content: [{ type: "text", text: lines.join("\n") }],
-        details: obj,
+        details: { ...obj, type_definition: typeDef ?? undefined },
       };
     },
   });
@@ -1157,6 +1184,35 @@ export default function (pi: ExtensionAPI) {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  function formatPropertyValue(p: any): string {
+    if (p.checkbox !== undefined && p.checkbox !== null) return String(Boolean(p.checkbox));
+    if (p.text !== undefined && p.text !== null) return String(p.text);
+    if (p.number !== undefined && p.number !== null) return String(p.number);
+    if (p.date !== undefined && p.date !== null) return String(p.date);
+    if (Array.isArray(p.tags) && p.tags.length > 0) {
+      return p.tags.map((t: any) => t.name ?? t.key ?? t.id).join(", ");
+    }
+    if (p.select) {
+      if (typeof p.select === "string") return p.select;
+      return p.select.name ?? p.select.key ?? p.select.id ?? "(selected)";
+    }
+    if (Array.isArray(p.objects) && p.objects.length > 0) {
+      return p.objects.join(", ");
+    }
+    if (p.url !== undefined && p.url !== null) return String(p.url);
+    if (p.email !== undefined && p.email !== null) return String(p.email);
+    if (p.phone !== undefined && p.phone !== null) return String(p.phone);
+    if (Array.isArray(p.files) && p.files.length > 0) {
+      return p.files.map((f: any) => f.name ?? f.id ?? "file").join(", ");
+    }
+    return "(unset)";
+  }
+
+  function defaultValueForFormat(format?: string): string {
+    if (format === "checkbox") return "false (default)";
+    return "(unset)";
+  }
 
   function ensureAuth() {
     if (!client.isAuthenticated) {
