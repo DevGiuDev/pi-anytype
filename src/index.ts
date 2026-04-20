@@ -26,8 +26,24 @@ export default function (pi: ExtensionAPI) {
   // Lifecycle
   // ---------------------------------------------------------------------------
 
-  pi.on("session_start", async () => {
+  pi.on("session_start", async (_event, ctx) => {
     await client.init();
+    const theme = ctx.ui.theme;
+
+    if (!client.isAuthenticated) {
+      ctx.ui.setStatus("anytype", theme.fg("warning", "\u25cf") + theme.fg("dim", " Anytype (no auth)"));
+      ctx.ui.notify("Anytype: Not authenticated. Run /anytype-login or set ANYTYPE_API_KEY.", "warn");
+      return;
+    }
+
+    try {
+      const spaces = await client.listSpaces({ limit: 1 });
+      ctx.ui.setStatus("anytype", theme.fg("success", "\u25cf") + theme.fg("dim", ` Anytype (${spaces.total} spaces)`));
+      ctx.ui.notify(`Anytype: Connected — ${spaces.total} space(s) available.`, "info");
+    } catch {
+      ctx.ui.setStatus("anytype", theme.fg("error", "\u25cf") + theme.fg("dim", " Anytype (off)"));
+      ctx.ui.notify("Anytype: Cannot reach API. Is Anytype desktop running?", "error");
+    }
   });
 
   // ---------------------------------------------------------------------------
