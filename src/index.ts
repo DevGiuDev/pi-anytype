@@ -196,12 +196,12 @@ export default function (pi: ExtensionAPI) {
     name: "anytype_search",
     label: "Anytype Search",
     description:
-      "Search objects across all Anytype spaces, or within a specific space. Returns matching objects with names, IDs, types, and snippets.",
+      "Search objects in the session default space, or a specific space. Uses the default space set via /anytype-space unless overridden.",
     promptSnippet:
       "Search Anytype spaces and objects by name or content",
     promptGuidelines: [
       "Use anytype_search when the user wants to find notes, tasks, pages, or other objects in Anytype.",
-      "If the user mentions a specific space, include the space_id parameter.",
+      "Uses the session default space automatically. Only pass space_id when the user explicitly wants a different space.",
       "Common type keys: page, note, task, project, bookmark, collection, set.",
     ],
     parameters: Type.Object({
@@ -322,11 +322,12 @@ export default function (pi: ExtensionAPI) {
     description: "Get details of one Anytype space by ID.",
     promptSnippet: "Get detailed info for an Anytype space",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
     }),
     async execute(_id, params) {
       ensureAuth();
-      const s = await client.getSpace(params.space_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      const s = await client.getSpace(spaceId);
       const lines = [
         fmtSpace(s),
         s.description ? `\n${s.description}` : "",
@@ -348,13 +349,14 @@ export default function (pi: ExtensionAPI) {
     description: "Update an existing Anytype space (name and/or description).",
     promptSnippet: "Update Anytype space metadata",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       name: Type.Optional(Type.String({ description: "New space name" })),
       description: Type.Optional(Type.String({ description: "New space description" })),
     }),
     async execute(_id, params) {
       ensureAuth();
-      const space = await client.updateSpace(params.space_id, {
+      const spaceId = resolveSpaceId(params.space_id);
+      const space = await client.updateSpace(spaceId, {
         name: params.name,
         description: params.description,
       });
@@ -376,7 +378,7 @@ export default function (pi: ExtensionAPI) {
       "Retrieve the full content of an Anytype object (note, page, task, etc.) including its body, properties, and blocks.",
     promptSnippet: "Read full content of an Anytype object",
     promptGuidelines: [
-      "Requires space_id and object_id. Use anytype_search first to find these.",
+      "Requires object_id. space_id is optional (uses session default). Use anytype_search first to find objects.",
     ],
     parameters: Type.Object({
       space_id: Type.String({ description: "Space ID containing the object" }),
@@ -384,12 +386,13 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       ensureAuth();
-      const obj = await client.getObject(params.space_id, params.object_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      const obj = await client.getObject(spaceId, params.object_id);
 
       let typeDef: any = null;
       if (obj.type?.id) {
         try {
-          typeDef = await client.getType(params.space_id, obj.type.id);
+          typeDef = await client.getType(spaceId, obj.type.id);
         } catch {
           typeDef = null;
         }
@@ -442,7 +445,7 @@ export default function (pi: ExtensionAPI) {
       "Create a new object (note, task, page, etc.) in an Anytype space. Supports setting name, body, type, and properties.",
     promptSnippet: "Create new notes, tasks, pages in Anytype",
     promptGuidelines: [
-      "Requires space_id and type_key. Use anytype_list_types to discover available types in a space.",
+      "Requires type_key. space_id is optional (uses session default). Use anytype_list_types to discover available types.",
       "Common type keys: page, note, task, project, bookmark.",
     ],
     parameters: Type.Object({
@@ -474,10 +477,11 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       ensureAuth();
+      const spaceId = resolveSpaceId(params.space_id);
       const icon = params.icon_emoji
         ? { emoji: params.icon_emoji }
         : undefined;
-      const obj = await client.createObject(params.space_id, {
+      const obj = await client.createObject(spaceId, {
         type_key: params.type_key,
         name: params.name,
         body: params.body,
@@ -492,7 +496,7 @@ export default function (pi: ExtensionAPI) {
             text: `Created: ${fmtObject(obj)}`,
           },
         ],
-        details: { id: obj.id, space_id: params.space_id },
+        details: { id: obj.id, space_id: spaceId },
       };
     },
   });
@@ -513,7 +517,7 @@ export default function (pi: ExtensionAPI) {
       "To change the object type, use 'type_key'.",
     ],
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       object_id: Type.String({ description: "Object ID to update" }),
       name: Type.Optional(Type.String({ description: "New name" })),
       body: Type.Optional(Type.String({ description: "New body/content (markdown). Only this field is sent — existing content is replaced." })),
@@ -533,11 +537,12 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       ensureAuth();
+      const spaceId = resolveSpaceId(params.space_id);
       const icon = params.icon_emoji
         ? { emoji: params.icon_emoji }
         : undefined;
       const obj = await client.updateObject(
-        params.space_id,
+        spaceId,
         params.object_id,
         {
           name: params.name,
@@ -569,17 +574,18 @@ export default function (pi: ExtensionAPI) {
     description: "Archive (soft-delete) an Anytype object.",
     promptSnippet: "Delete/archive Anytype objects",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       object_id: Type.String({ description: "Object ID to delete" }),
     }),
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       ensureAuth();
-      await client.deleteObject(params.space_id, params.object_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      await client.deleteObject(spaceId, params.object_id);
       return {
         content: [
           {
             type: "text",
-            text: `Archived object \`${params.object_id}\` in space \`${params.space_id}\`.`,
+            text: `Archived object \`${params.object_id}\` in space \`${spaceId}\`.`,
           },
         ],
       };
@@ -600,11 +606,12 @@ export default function (pi: ExtensionAPI) {
       "Always use this before anytype_create_object to discover valid type_key values for a space.",
     ],
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
     }),
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       ensureAuth();
-      const result = await client.listTypes(params.space_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      const result = await client.listTypes(spaceId);
       const lines = [
         `${result.total} type(s):`,
         "",
@@ -626,12 +633,13 @@ export default function (pi: ExtensionAPI) {
     label: "Get Anytype Type",
     description: "Get details of a specific type in a space.",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       type_id: Type.String({ description: "Type ID" }),
     }),
     async execute(_id, params) {
       ensureAuth();
-      const t = await client.getType(params.space_id, params.type_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      const t = await client.getType(spaceId, params.type_id);
       return {
         content: [{ type: "text", text: fmtType(t) }],
         details: t,
@@ -644,7 +652,7 @@ export default function (pi: ExtensionAPI) {
     label: "Create Anytype Type",
     description: "Create a custom object type in a space.",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       name: Type.String({ description: "Type singular name" }),
       plural_name: Type.String({ description: "Type plural name" }),
       layout: Type.String({ description: "Type layout (e.g. basic, note, bookmark, set, collection)" }),
@@ -656,7 +664,8 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params) {
       ensureAuth();
-      const t = await client.createType(params.space_id, {
+      const spaceId = resolveSpaceId(params.space_id);
+      const t = await client.createType(spaceId, {
         name: params.name,
         plural_name: params.plural_name,
         layout: params.layout,
@@ -676,7 +685,7 @@ export default function (pi: ExtensionAPI) {
     label: "Update Anytype Type",
     description: "Update an existing custom type in a space.",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       type_id: Type.String({ description: "Type ID" }),
       name: Type.Optional(Type.String({ description: "New singular name" })),
       plural_name: Type.Optional(Type.String({ description: "New plural name" })),
@@ -689,7 +698,8 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params) {
       ensureAuth();
-      const t = await client.updateType(params.space_id, params.type_id, {
+      const spaceId = resolveSpaceId(params.space_id);
+      const t = await client.updateType(spaceId, params.type_id, {
         name: params.name,
         plural_name: params.plural_name,
         key: params.key,
@@ -709,12 +719,13 @@ export default function (pi: ExtensionAPI) {
     label: "Delete Anytype Type",
     description: "Archive/delete a custom type from a space.",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       type_id: Type.String({ description: "Type ID" }),
     }),
     async execute(_id, params) {
       ensureAuth();
-      await client.deleteType(params.space_id, params.type_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      await client.deleteType(spaceId, params.type_id);
       return {
         content: [{ type: "text", text: `Deleted type \`${params.type_id}\`.` }],
       };
@@ -732,7 +743,7 @@ export default function (pi: ExtensionAPI) {
       "List objects in an Anytype space. Supports pagination.",
     promptSnippet: "List all objects in an Anytype space",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       limit: Type.Optional(
         Type.Number({ description: "Max results (default 20)", default: 20 }),
       ),
@@ -742,7 +753,8 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       ensureAuth();
-      const result = await client.listObjects(params.space_id, {
+      const spaceId = resolveSpaceId(params.space_id);
+      const result = await client.listObjects(spaceId, {
         limit: params.limit ?? 20,
         offset: params.offset,
       });
@@ -767,14 +779,15 @@ export default function (pi: ExtensionAPI) {
     label: "List Anytype List Views",
     description: "List views configured for a collection/query (list).",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       list_id: Type.String({ description: "Collection/Set (list) object ID" }),
       limit: Type.Optional(Type.Number({ description: "Max results (default 20)", default: 20 })),
       offset: Type.Optional(Type.Number({ description: "Skip this many results", default: 0 })),
     }),
     async execute(_id, params) {
       ensureAuth();
-      const result = await client.getListViews(params.space_id, params.list_id, {
+      const spaceId = resolveSpaceId(params.space_id);
+      const result = await client.getListViews(spaceId, params.list_id, {
         limit: params.limit ?? 20,
         offset: params.offset,
       });
@@ -795,7 +808,7 @@ export default function (pi: ExtensionAPI) {
     label: "List Objects in Collection/Set",
     description: "List objects contained in a specific collection/query view.",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       list_id: Type.String({ description: "Collection/Set (list) ID" }),
       view_id: Type.String({ description: "View ID" }),
       limit: Type.Optional(Type.Number({ description: "Max results (default 20)", default: 20 })),
@@ -803,7 +816,8 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params) {
       ensureAuth();
-      const result = await client.getListObjects(params.space_id, params.list_id, params.view_id, {
+      const spaceId = resolveSpaceId(params.space_id);
+      const result = await client.getListObjects(spaceId, params.list_id, params.view_id, {
         limit: params.limit ?? 20,
         offset: params.offset,
       });
@@ -824,13 +838,14 @@ export default function (pi: ExtensionAPI) {
     label: "Add Objects to Collection/Set",
     description: "Add one or more objects to a collection/query list.",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       list_id: Type.String({ description: "List ID" }),
       object_ids: Type.Array(Type.String(), { description: "Object IDs to add" }),
     }),
     async execute(_id, params) {
       ensureAuth();
-      await client.addListObjects(params.space_id, params.list_id, params.object_ids);
+      const spaceId = resolveSpaceId(params.space_id);
+      await client.addListObjects(spaceId, params.list_id, params.object_ids);
       return {
         content: [{ type: "text", text: `Added ${params.object_ids.length} object(s) to list \`${params.list_id}\`.` }],
       };
@@ -842,13 +857,14 @@ export default function (pi: ExtensionAPI) {
     label: "Remove Object from Collection/Set",
     description: "Remove an object from a collection/query list.",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       list_id: Type.String({ description: "List ID" }),
       object_id: Type.String({ description: "Object ID to remove" }),
     }),
     async execute(_id, params) {
       ensureAuth();
-      await client.removeListObject(params.space_id, params.list_id, params.object_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      await client.removeListObject(spaceId, params.list_id, params.object_id);
       return {
         content: [{ type: "text", text: `Removed object \`${params.object_id}\` from list \`${params.list_id}\`.` }],
       };
@@ -866,11 +882,12 @@ export default function (pi: ExtensionAPI) {
       "List available properties in a space (useful for setting properties on objects).",
     promptSnippet: "List properties available in an Anytype space",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
     }),
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       ensureAuth();
-      const result = await client.listProperties(params.space_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      const result = await client.listProperties(spaceId);
       const lines = [
         `${result.total} propertie(s):`,
         "",
@@ -892,12 +909,13 @@ export default function (pi: ExtensionAPI) {
     label: "Get Anytype Property",
     description: "Get details of a property in a space.",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       property_id: Type.String({ description: "Property ID" }),
     }),
     async execute(_id, params) {
       ensureAuth();
-      const p = await client.getProperty(params.space_id, params.property_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      const p = await client.getProperty(spaceId, params.property_id);
       return {
         content: [{ type: "text", text: fmtProperty(p) }],
         details: p,
@@ -910,7 +928,7 @@ export default function (pi: ExtensionAPI) {
     label: "Create Anytype Property",
     description: "Create a new property in a space.",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       name: Type.String({ description: "Property name" }),
       format: Type.String({ description: "Property format (text, number, date, checkbox, select, multi_select, objects, etc.)" }),
       key: Type.Optional(Type.String({ description: "Optional custom key" })),
@@ -922,7 +940,8 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params) {
       ensureAuth();
-      const p = await client.createProperty(params.space_id, {
+      const spaceId = resolveSpaceId(params.space_id);
+      const p = await client.createProperty(spaceId, {
         name: params.name,
         format: params.format,
         key: params.key,
@@ -940,14 +959,15 @@ export default function (pi: ExtensionAPI) {
     label: "Update Anytype Property",
     description: "Update a property's metadata (name/key).",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       property_id: Type.String({ description: "Property ID" }),
       name: Type.Optional(Type.String({ description: "New name" })),
       key: Type.Optional(Type.String({ description: "New key" })),
     }),
     async execute(_id, params) {
       ensureAuth();
-      const p = await client.updateProperty(params.space_id, params.property_id, {
+      const spaceId = resolveSpaceId(params.space_id);
+      const p = await client.updateProperty(spaceId, params.property_id, {
         name: params.name,
         key: params.key,
       });
@@ -963,12 +983,13 @@ export default function (pi: ExtensionAPI) {
     label: "Delete Anytype Property",
     description: "Delete/archive a property from a space.",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       property_id: Type.String({ description: "Property ID" }),
     }),
     async execute(_id, params) {
       ensureAuth();
-      await client.deleteProperty(params.space_id, params.property_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      await client.deleteProperty(spaceId, params.property_id);
       return {
         content: [{ type: "text", text: `Deleted property \`${params.property_id}\`.` }],
       };
@@ -986,12 +1007,13 @@ export default function (pi: ExtensionAPI) {
       "List tags for a specific select/multi_select property in a space.",
     promptSnippet: "List tags for an Anytype property",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       property_id: Type.String({ description: "Property ID (select or multi_select type)" }),
     }),
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       ensureAuth();
-      const result = await client.listTags(params.space_id, params.property_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      const result = await client.listTags(spaceId, params.property_id);
       const lines = [
         `${result.total} tag(s):`,
         "",
@@ -1015,14 +1037,15 @@ export default function (pi: ExtensionAPI) {
       "Create a new tag option for a select/multi_select property.",
     promptSnippet: "Create tags for Anytype properties",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       property_id: Type.String({ description: "Property ID" }),
       name: Type.String({ description: "Tag name" }),
       color: StringEnum(COLORS, { description: "Tag color", default: "grey" }),
     }),
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       ensureAuth();
-      const tag = await client.createTag(params.space_id, params.property_id, {
+      const spaceId = resolveSpaceId(params.space_id);
+      const tag = await client.createTag(spaceId, params.property_id, {
         name: params.name,
         color: params.color ?? "grey",
       });
@@ -1047,13 +1070,14 @@ export default function (pi: ExtensionAPI) {
     label: "Get Anytype Tag",
     description: "Get details of a tag from a select/multi_select property.",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       property_id: Type.String({ description: "Property ID" }),
       tag_id: Type.String({ description: "Tag ID" }),
     }),
     async execute(_id, params) {
       ensureAuth();
-      const tag = await client.getTag(params.space_id, params.property_id, params.tag_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      const tag = await client.getTag(spaceId, params.property_id, params.tag_id);
       return {
         content: [{ type: "text", text: fmtTag(tag) }],
         details: tag,
@@ -1066,7 +1090,7 @@ export default function (pi: ExtensionAPI) {
     label: "Update Anytype Tag",
     description: "Update a tag option for a select/multi_select property.",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       property_id: Type.String({ description: "Property ID" }),
       tag_id: Type.String({ description: "Tag ID" }),
       name: Type.Optional(Type.String({ description: "New tag name" })),
@@ -1075,7 +1099,8 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params) {
       ensureAuth();
-      const tag = await client.updateTag(params.space_id, params.property_id, params.tag_id, {
+      const spaceId = resolveSpaceId(params.space_id);
+      const tag = await client.updateTag(spaceId, params.property_id, params.tag_id, {
         name: params.name,
         color: params.color,
         key: params.key,
@@ -1092,13 +1117,14 @@ export default function (pi: ExtensionAPI) {
     label: "Delete Anytype Tag",
     description: "Delete/archive a tag option from a property.",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       property_id: Type.String({ description: "Property ID" }),
       tag_id: Type.String({ description: "Tag ID" }),
     }),
     async execute(_id, params) {
       ensureAuth();
-      await client.deleteTag(params.space_id, params.property_id, params.tag_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      await client.deleteTag(spaceId, params.property_id, params.tag_id);
       return {
         content: [{ type: "text", text: `Deleted tag \`${params.tag_id}\` from property \`${params.property_id}\`.` }],
       };
@@ -1115,11 +1141,12 @@ export default function (pi: ExtensionAPI) {
     description: "List members of a space with their roles and status.",
     promptSnippet: "List members of an Anytype space",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
     }),
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       ensureAuth();
-      const result = await client.listMembers(params.space_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      const result = await client.listMembers(spaceId);
       const lines = [
         `${result.total} member(s):`,
         "",
@@ -1144,12 +1171,13 @@ export default function (pi: ExtensionAPI) {
     label: "Get Anytype Member",
     description: "Get details of a specific member in a space.",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       member_id: Type.String({ description: "Member ID" }),
     }),
     async execute(_id, params) {
       ensureAuth();
-      const m = await client.getMember(params.space_id, params.member_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      const m = await client.getMember(spaceId, params.member_id);
       const icon = m.icon?.emoji ?? "👤";
       const text = `${icon} **${m.name ?? m.global_name ?? "Unknown"}** (id: \`${m.id}\`, role: ${m.role ?? "?"}, status: ${m.status ?? "?"})`;
       return {
@@ -1170,12 +1198,13 @@ export default function (pi: ExtensionAPI) {
       "List templates available for a specific object type in a space.",
     promptSnippet: "List templates for an Anytype object type",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       type_id: Type.String({ description: "Type ID to list templates for" }),
     }),
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       ensureAuth();
-      const result = await client.listTemplates(params.space_id, params.type_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      const result = await client.listTemplates(spaceId, params.type_id);
       const lines = [
         `${result.total} template(s):`,
         "",
@@ -1200,13 +1229,14 @@ export default function (pi: ExtensionAPI) {
     label: "Get Anytype Template",
     description: "Get a specific template by ID for a given type.",
     parameters: Type.Object({
-      space_id: Type.String({ description: "Space ID" }),
+      space_id: Type.Optional(Type.String({ description: "Space ID (uses session default if omitted)" })),
       type_id: Type.String({ description: "Type ID" }),
       template_id: Type.String({ description: "Template ID" }),
     }),
     async execute(_id, params) {
       ensureAuth();
-      const t = await client.getTemplate(params.space_id, params.type_id, params.template_id);
+      const spaceId = resolveSpaceId(params.space_id);
+      const t = await client.getTemplate(spaceId, params.type_id, params.template_id);
       const lines = [
         `📋 **${t.name ?? "Untitled"}** (id: \`${t.id}\`)`,
         "",
@@ -1248,15 +1278,8 @@ export default function (pi: ExtensionAPI) {
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       ensureAuth();
 
-      // Resolve space: explicit > default > first available
-      let spaceId = params.space_id ?? defaultSpaceId;
-      if (!spaceId) {
-        const spaces = await client.listSpaces({ limit: 1 });
-        if (!spaces.results.length) {
-          throw new Error("No spaces found. Create one first with anytype_create_space tool.");
-        }
-        spaceId = spaces.results[0].id;
-      }
+      // Resolve space: explicit > session default
+      const spaceId = resolveSpaceId(params.space_id);
 
       // Try 'note' type, fallback to 'page'
       const types = await client.listTypes(spaceId);
@@ -1317,6 +1340,16 @@ export default function (pi: ExtensionAPI) {
   function defaultValueForFormat(format?: string): string {
     if (format === "checkbox") return "false (default)";
     return "(unset)";
+  }
+
+  function resolveSpaceId(explicitId?: string): string {
+    const id = explicitId ?? defaultSpaceId;
+    if (!id) {
+      throw new Error(
+        "No space specified and no default space set. Use /anytype-space to choose one.",
+      );
+    }
+    return id;
   }
 
   function ensureAuth() {
